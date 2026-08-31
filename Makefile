@@ -1,5 +1,5 @@
 .PHONY: venv test lint local-up local-down local-build local-deploy local-api-url \
-        local-serve-frontend seed integration-test
+        local-serve-frontend seed webcam-simulator integration-test
 
 LOCALSTACK_CREDS = AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
 LOCALSTACK_ENDPOINT = http://localhost:4566
@@ -70,6 +70,10 @@ seed: venv
 	python scripts/upload_test_photo.py \
 	  --bucket kinetic-photo-booth-photos-000000000000 \
 	  --count 3 --endpoint-url $(LOCALSTACK_ENDPOINT)
+
+webcam-simulator: venv
+	@$(LOCALSTACK_CREDS) $(RUN_PATH) PYTHONPATH=. \
+	python scripts/webcam_simulator.py --endpoint-url $(LOCALSTACK_ENDPOINT)
 
 integration-test: venv
 	@API_URL=$$($(MAKE) -s local-api-url); \
