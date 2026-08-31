@@ -24,8 +24,12 @@ def test_uploaded_photos_appear_in_gallery():
             LOCALSTACK_ENDPOINT,
         ],
         check=True,
-        env={**os.environ, "AWS_ACCESS_KEY_ID": "test", "AWS_SECRET_ACCESS_KEY": "test",
-             "AWS_DEFAULT_REGION": "us-east-1"},
+        env={
+            **os.environ,
+            "AWS_ACCESS_KEY_ID": "test",
+            "AWS_SECRET_ACCESS_KEY": "test",
+            "AWS_DEFAULT_REGION": "us-east-1",
+        },
     )
 
     auth_res = requests.post(

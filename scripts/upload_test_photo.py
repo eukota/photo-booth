@@ -13,7 +13,9 @@ FIXTURE_JPEG_BYTES = bytes.fromhex(
 )
 
 
-def upload(bucket: str, event_id: str, device_id: str, count: int, endpoint_url: str | None):
+def upload(
+    bucket: str, event_id: str, device_id: str, count: int, endpoint_url: str | None
+):
     s3 = boto3.client("s3", endpoint_url=endpoint_url)
     for _ in range(count):
         key = f"events/{event_id}/{device_id}/{uuid.uuid4()}.jpg"
