@@ -982,6 +982,17 @@ only, no network call, so an unreachable-from-inside-the-container
 endpoint is fine) for `generate_presigned_url` when that env var is set.
 Local deploys pass `PresignEndpointUrl=http://localhost:4566`.
 
+**Note (discovered during implementation):** the API never sent
+`Access-Control-Allow-Origin`, so the browser-based gallery frontend (a
+different origin than the API - a local static server, or CloudFront in
+prod) got real 200/401 responses from the server but silently dropped
+every one of them client-side. The frontend's generic catch-block then
+showed "Wrong password" regardless of cause, including on a *correct*
+password. Fixed with `Cors` config on `GalleryApi` (handles the OPTIONS
+preflight) plus a shared `src/common/response.py` `json_response()`
+helper that both Lambdas now use, adding
+`Access-Control-Allow-Origin: *` to every response.
+
 **Note (discovered during implementation):** LocalStack Community's
 `AWS::Serverless::HttpApi` (API Gateway v2) support hit a reproducible
 `Unable to resolve Ref for resource "GalleryApi"` failure when creating
