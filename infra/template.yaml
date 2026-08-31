@@ -7,6 +7,26 @@ Parameters:
     Type: String
     NoEcho: true
     Description: Shared operator password for the gallery login
+  DeployCloudFront:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: >
+      Set to "false" for local (LocalStack) deploys, whose community
+      edition doesn't emulate CloudFront/OAC. The frontend is instead
+      served with a plain local static server against the same API. Real
+      AWS deploys always leave this "true".
+  PresignEndpointUrl:
+    Type: String
+    Default: ""
+    Description: >
+      Leave empty for real AWS deploys (uses boto3's default AWS
+      endpoint). For local (LocalStack) deploys, set to
+      "http://localhost:4566" so pre-signed URLs are reachable from the
+      host browser instead of LocalStack's internal Docker address.
+
+Conditions:
+  ShouldDeployCloudFront: !Equals [!Ref DeployCloudFront, "true"]
 
 Resources:
   PhotosBucket:
@@ -39,8 +59,8 @@ Resources:
     Properties:
       FunctionName: kinetic-photo-booth-auth
       Runtime: python3.12
-      Handler: handler.lambda_handler
-      CodeUri: ../src/lambdas/auth/
+      Handler: src.lambdas.auth.handler.lambda_handler
+      CodeUri: ../
       Timeout: 10
       Environment:
         Variables:
@@ -48,9 +68,9 @@ Resources:
           SESSION_SECRET: !Sub "{{resolve:secretsmanager:${SessionSecret}:SecretString:secret}}"
       Events:
         AuthApi:
-          Type: HttpApi
+          Type: Api
           Properties:
-            ApiId: !Ref GalleryApi
+            RestApiId: !Ref GalleryApi
             Path: /auth
             Method: POST
 
@@ -59,8 +79,8 @@ Resources:
     Properties:
       FunctionName: kinetic-photo-booth-list-photos
       Runtime: python3.12
-      Handler: handler.lambda_handler
-      CodeUri: ../src/lambdas/list_photos/
+      Handler: src.lambdas.list_photos.handler.lambda_handler
+      CodeUri: ../
       Timeout: 10
       Policies:
         - S3ReadPolicy:
@@ -69,24 +89,27 @@ Resources:
         Variables:
           PHOTOS_BUCKET_NAME: !Ref PhotosBucket
           SESSION_SECRET: !Sub "{{resolve:secretsmanager:${SessionSecret}:SecretString:secret}}"
+          PRESIGN_ENDPOINT_URL: !Ref PresignEndpointUrl
       Events:
         ListApi:
-          Type: HttpApi
+          Type: Api
           Properties:
-            ApiId: !Ref GalleryApi
+            RestApiId: !Ref GalleryApi
             Path: /photos
             Method: GET
 
   GalleryApi:
-    Type: AWS::Serverless::HttpApi
+    Type: AWS::Serverless::Api
     Properties:
       StageName: prod
       # Throttle the whole API (the /auth route is the sensitive one - a
       # single shared password - so keep this low; per the design's
       # error-handling section, brute-force attempts must be blunted).
-      DefaultRouteSettings:
-        ThrottlingBurstLimit: 5
-        ThrottlingRateLimit: 1
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingBurstLimit: 5
+          ThrottlingRateLimit: 1
 
   PhotoUploaderUser:
     Type: AWS::IAM::User
@@ -113,6 +136,7 @@ Resources:
 
   FrontendOAC:
     Type: AWS::CloudFront::OriginAccessControl
+    Condition: ShouldDeployCloudFront
     Properties:
       OriginAccessControlConfig:
         Name: kinetic-photo-booth-frontend-oac
@@ -122,6 +146,7 @@ Resources:
 
   FrontendDistribution:
     Type: AWS::CloudFront::Distribution
+    Condition: ShouldDeployCloudFront
     Properties:
       DistributionConfig:
         Enabled: true
@@ -138,6 +163,7 @@ Resources:
 
   FrontendBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    Condition: ShouldDeployCloudFront
     Properties:
       Bucket: !Ref FrontendBucket
       PolicyDocument:
@@ -157,6 +183,7 @@ Outputs:
     Export:
       Name: kinetic-photo-booth-photos-bucket-name
   ApiBaseUrl:
-    Value: !Sub "https://${GalleryApi}.execute-api.${AWS::Region}.amazonaws.com"
+    Value: !Sub "https://${GalleryApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
   GalleryUrl:
+    Condition: ShouldDeployCloudFront
     Value: !Sub "https://${FrontendDistribution.DomainName}"

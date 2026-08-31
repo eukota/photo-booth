@@ -1,4 +1,11 @@
-.PHONY: test lint local-up local-down local-deploy seed integration-test
+.PHONY: test lint local-up local-down local-build local-deploy local-api-url \
+        local-serve-frontend seed integration-test
+
+LOCALSTACK_CREDS = AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
+LOCALSTACK_ENDPOINT = http://localhost:4566
+# SAM needs a python3.12 interpreter on PATH (Lambda runtime version);
+# the system default may be newer.
+PY312_PATH = /opt/homebrew/opt/python@3.12/libexec/bin
 
 test:
 	PYTHONPATH=. pytest tests/unit -v
@@ -13,24 +20,46 @@ local-up:
 local-down:
 	docker compose -f docker-compose.localstack.yml down
 
-local-deploy:
-	AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1 \
-	sam deploy \
-	  --template-file infra/template.yaml \
+local-build:
+	PATH="$(PY312_PATH):$$PATH" \
+	sam build --template-file infra/template.yaml
+
+local-deploy: local-build
+	$(LOCALSTACK_CREDS) PATH="$(PY312_PATH):$$PATH" \
+	samlocal deploy \
+	  --template-file .aws-sam/build/template.yaml \
 	  --stack-name photo-booth-local \
 	  --capabilities CAPABILITY_NAMED_IAM \
-	  --parameter-overrides GalleryPassword=localtest \
+	  --parameter-overrides GalleryPassword=localtest DeployCloudFront=false \
+	    PresignEndpointUrl=$(LOCALSTACK_ENDPOINT) \
 	  --resolve-s3 \
 	  --no-confirm-changeset \
-	  --region us-east-1 \
-	  --endpoint-url http://localhost:4566
-	AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1 \
-	aws --endpoint-url=http://localhost:4566 s3 sync frontend/ \
-	  s3://kinetic-photo-booth-frontend-000000000000/
+	  --region us-east-1
+
+# LocalStack doesn't route the real-AWS-style ApiBaseUrl CFN output
+# locally; this derives the local `_user_request_` test-invoke URL instead.
+local-api-url:
+	@$(LOCALSTACK_CREDS) aws --endpoint-url=$(LOCALSTACK_ENDPOINT) \
+	  cloudformation describe-stack-resource \
+	  --stack-name photo-booth-local --logical-resource-id GalleryApi \
+	  --query 'StackResourceDetail.PhysicalResourceId' --output text \
+	  | xargs -I{} echo "$(LOCALSTACK_ENDPOINT)/restapis/{}/prod/_user_request_"
+
+local-serve-frontend:
+	@API_URL=$$($(MAKE) -s local-api-url); \
+	mkdir -p /tmp/photo-booth-frontend; \
+	sed "s|__API_BASE_URL__|$$API_URL|" frontend/index.html > /tmp/photo-booth-frontend/index.html; \
+	cp frontend/app.js frontend/style.css /tmp/photo-booth-frontend/; \
+	echo "Serving gallery at http://localhost:8080 (API: $$API_URL)"; \
+	cd /tmp/photo-booth-frontend && python3 -m http.server 8080
 
 seed:
-	PYTHONPATH=. AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1 \
-	python scripts/upload_test_photo.py --count 3 --endpoint-url http://localhost:4566
+	$(LOCALSTACK_CREDS) PYTHONPATH=. \
+	python scripts/upload_test_photo.py \
+	  --bucket kinetic-photo-booth-photos-000000000000 \
+	  --count 3 --endpoint-url $(LOCALSTACK_ENDPOINT)
 
 integration-test:
-	PYTHONPATH=. pytest tests/integration -v
+	@API_URL=$$($(MAKE) -s local-api-url); \
+	LOCAL_API_BASE_URL=$$API_URL $(LOCALSTACK_CREDS) PYTHONPATH=. \
+	pytest tests/integration -v

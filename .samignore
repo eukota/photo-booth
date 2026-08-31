@@ -1,0 +1,14 @@
+.venv/
+.git/
+.aws-sam/
+.localstack/
+tests/
+frontend/
+pi/
+docs/
+scripts/
+Makefile
+docker-compose.localstack.yml
+README.md
+requirements-dev.txt
+.gitignore
