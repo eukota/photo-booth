@@ -31,11 +31,39 @@ async function loadPhotos() {
   grid.innerHTML = "";
   emptyState.hidden = photos.length > 0;
   for (const photo of photos) {
-    const img = document.createElement("img");
-    img.src = photo.url;
-    img.alt = photo.key;
-    grid.appendChild(img);
+    grid.appendChild(buildPhotoTile(photo));
   }
+}
+
+function buildPhotoTile(photo) {
+  const tile = document.createElement("div");
+  tile.className = "photo-tile";
+
+  const img = document.createElement("img");
+  img.src = photo.url;
+  img.alt = photo.key;
+  tile.appendChild(img);
+
+  // Operator convenience: one click to save, right from this screen.
+  const downloadLink = document.createElement("a");
+  downloadLink.href = photo.url;
+  downloadLink.download = photo.key.split("/").pop();
+  downloadLink.className = "download-link";
+  downloadLink.textContent = "Download";
+  tile.appendChild(downloadLink);
+
+  // Patron self-serve: scan with your own phone to get the photo
+  // directly - no operator involvement needed. Same presigned URL as
+  // the download link and <img> above, just QR-encoded.
+  const qrWrapper = document.createElement("div");
+  qrWrapper.className = "qr-code";
+  const qr = qrcode(0, "M");
+  qr.addData(photo.url);
+  qr.make();
+  qrWrapper.innerHTML = qr.createSvgTag(3, 8);
+  tile.appendChild(qrWrapper);
+
+  return tile;
 }
 
 document.getElementById("login-btn").addEventListener("click", async () => {

@@ -1,4 +1,8 @@
 body { font-family: sans-serif; background: #111; color: #eee; }
-#photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-#photo-grid img { width: 100%; border-radius: 4px; }
+#photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.photo-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; background: #1a1a1a; padding: 8px; border-radius: 6px; }
+.photo-tile img { width: 100%; border-radius: 4px; }
+.download-link { color: #6cf; text-decoration: none; font-size: 0.9em; }
+.download-link:hover { text-decoration: underline; }
+.qr-code svg { width: 96px; height: 96px; background: white; border-radius: 4px; }
 .error { color: #f66; }
