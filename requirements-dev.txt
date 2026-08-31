@@ -1,0 +1,7 @@
+pytest==8.3.3
+moto[s3]==5.0.13
+boto3==1.35.24
+PyJWT==2.9.0
+requests==2.32.3
+black==24.8.0
+flake8==7.1.1

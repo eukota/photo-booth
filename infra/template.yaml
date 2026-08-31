@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Kinetic Photo Booth MVP - capture -> S3 -> gallery
+
+Parameters:
+  GalleryPassword:
+    Type: String
+    NoEcho: true
+    Description: Shared operator password for the gallery login
+
+Resources:
+  PhotosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "kinetic-photo-booth-photos-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-after-30-days
+            Status: Enabled
+            ExpirationInDays: 30
+
+  SessionSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: kinetic-photo-booth-session-secret
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: "secret"
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: kinetic-photo-booth-auth
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      CodeUri: ../src/lambdas/auth/
+      Timeout: 10
+      Environment:
+        Variables:
+          GALLERY_PASSWORD: !Ref GalleryPassword
+          SESSION_SECRET: !Sub "{{resolve:secretsmanager:${SessionSecret}:SecretString:secret}}"
+      Events:
+        AuthApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref GalleryApi
+            Path: /auth
+            Method: POST
+
+  ListPhotosFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: kinetic-photo-booth-list-photos
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      CodeUri: ../src/lambdas/list_photos/
+      Timeout: 10
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref PhotosBucket
+      Environment:
+        Variables:
+          PHOTOS_BUCKET_NAME: !Ref PhotosBucket
+          SESSION_SECRET: !Sub "{{resolve:secretsmanager:${SessionSecret}:SecretString:secret}}"
+      Events:
+        ListApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref GalleryApi
+            Path: /photos
+            Method: GET
+
+  GalleryApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      # Throttle the whole API (the /auth route is the sensitive one - a
+      # single shared password - so keep this low; per the design's
+      # error-handling section, brute-force attempts must be blunted).
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 5
+        ThrottlingRateLimit: 1
+
+  PhotoUploaderUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: kinetic-photo-booth-uploader
+      Policies:
+        - PolicyName: PutObjectOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "${PhotosBucket.Arn}/*"
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "kinetic-photo-booth-frontend-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FrontendOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: kinetic-photo-booth-frontend-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: frontend-origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref FrontendOAC
+        DefaultCacheBehavior:
+          TargetOriginId: frontend-origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}"
+
+Outputs:
+  PhotosBucketName:
+    Value: !Ref PhotosBucket
+    Export:
+      Name: kinetic-photo-booth-photos-bucket-name
+  ApiBaseUrl:
+    Value: !Sub "https://${GalleryApi}.execute-api.${AWS::Region}.amazonaws.com"
+  GalleryUrl:
+    Value: !Sub "https://${FrontendDistribution.DomainName}"
