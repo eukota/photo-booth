@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Kinetic Photo Booth Gallery</title>
+  <link rel="stylesheet" href="style.css">
+  <script>window.API_BASE_URL = "__API_BASE_URL__";</script>
+</head>
+<body>
+  <div id="login-view">
+    <input id="password" type="password" placeholder="Operator password">
+    <button id="login-btn">Log in</button>
+    <p id="login-error" class="error" hidden>Wrong password.</p>
+  </div>
+  <div id="gallery-view" hidden>
+    <div id="photo-grid"></div>
+    <p id="empty-state" hidden>No photos yet.</p>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

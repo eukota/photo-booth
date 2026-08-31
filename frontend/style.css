@@ -1,0 +1,4 @@
+body { font-family: sans-serif; background: #111; color: #eee; }
+#photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+#photo-grid img { width: 100%; border-radius: 4px; }
+.error { color: #f66; }
