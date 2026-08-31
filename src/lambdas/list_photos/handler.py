@@ -1,7 +1,7 @@
-import json
 import os
 import boto3
 from src.common.session import verify_session
+from src.common.response import json_response
 
 PRESIGN_TTL_SECONDS = 30 * 60
 
@@ -12,7 +12,7 @@ def lambda_handler(event, context):
     token = auth_header.removeprefix("Bearer ").strip()
 
     if not token or not verify_session(token, secret=os.environ["SESSION_SECRET"]):
-        return {"statusCode": 401, "body": json.dumps({"error": "unauthorized"})}
+        return json_response(401, {"error": "unauthorized"})
 
     bucket = os.environ["PHOTOS_BUCKET_NAME"]
     s3 = boto3.client("s3")
@@ -43,4 +43,4 @@ def lambda_handler(event, context):
         for obj in response.get("Contents", [])
     ]
 
-    return {"statusCode": 200, "body": json.dumps({"photos": photos})}
+    return json_response(200, {"photos": photos})

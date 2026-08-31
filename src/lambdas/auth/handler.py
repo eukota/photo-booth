@@ -1,6 +1,7 @@
 import json
 import os
 from src.common.session import create_session
+from src.common.response import json_response
 
 
 def lambda_handler(event, context):
@@ -9,13 +10,7 @@ def lambda_handler(event, context):
     expected = os.environ["GALLERY_PASSWORD"]
 
     if submitted != expected:
-        return {
-            "statusCode": 401,
-            "body": json.dumps({"error": "invalid credentials"}),
-        }
+        return json_response(401, {"error": "invalid credentials"})
 
     token = create_session(secret=os.environ["SESSION_SECRET"])
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"session": token}),
-    }
+    return json_response(200, {"session": token})

@@ -102,6 +102,16 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
+      # The gallery frontend is a static site served from a different
+      # origin than the API (S3/CloudFront in prod, a plain local static
+      # server in dev) - this handles the OPTIONS preflight. The actual
+      # GET/POST responses still need Access-Control-Allow-Origin set by
+      # the Lambda code itself (API Gateway doesn't add it to responses
+      # coming from a Lambda proxy integration).
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowMethods: "'GET,POST,OPTIONS'"
       # Throttle the whole API (the /auth route is the sensitive one - a
       # single shared password - so keep this low; per the design's
       # error-handling section, brute-force attempts must be blunted).
