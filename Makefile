@@ -61,7 +61,7 @@ local-serve-frontend: venv
 	@API_URL=$$($(MAKE) -s local-api-url); \
 	mkdir -p /tmp/photo-booth-frontend; \
 	sed "s|__API_BASE_URL__|$$API_URL|" frontend/index.html > /tmp/photo-booth-frontend/index.html; \
-	cp frontend/app.js frontend/style.css /tmp/photo-booth-frontend/; \
+	cp frontend/app.js frontend/style.css frontend/qrcode.js /tmp/photo-booth-frontend/; \
 	echo "Serving gallery at http://localhost:8080 (API: $$API_URL)"; \
 	cd /tmp/photo-booth-frontend && $(VENV_BIN)/python -m http.server 8080
 
