@@ -1,5 +1,5 @@
 .PHONY: venv test lint local-up local-down local-build local-deploy local-api-url \
-        local-serve-frontend seed webcam-simulator integration-test
+        local-redirect-api-url local-serve-frontend seed webcam-simulator integration-test
 
 LOCALSTACK_CREDS = AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
 LOCALSTACK_ENDPOINT = http://localhost:4566
@@ -57,12 +57,23 @@ local-api-url: venv
 	  --query 'StackResourceDetail.PhysicalResourceId' --output text \
 	  | xargs -I{} echo "$(LOCALSTACK_ENDPOINT)/restapis/{}/prod/_user_request_"
 
+# RedirectPhotoFunction lives on its own API (RedirectApi) - see
+# infra/template.yaml for why.
+local-redirect-api-url: venv
+	@$(LOCALSTACK_CREDS) $(RUN_PATH) aws --endpoint-url=$(LOCALSTACK_ENDPOINT) \
+	  cloudformation describe-stack-resource \
+	  --stack-name photo-booth-local --logical-resource-id RedirectApi \
+	  --query 'StackResourceDetail.PhysicalResourceId' --output text \
+	  | xargs -I{} echo "$(LOCALSTACK_ENDPOINT)/restapis/{}/prod/_user_request_"
+
 local-serve-frontend: venv
 	@API_URL=$$($(MAKE) -s local-api-url); \
+	REDIRECT_API_URL=$$($(MAKE) -s local-redirect-api-url); \
 	mkdir -p /tmp/photo-booth-frontend; \
-	sed "s|__API_BASE_URL__|$$API_URL|" frontend/index.html > /tmp/photo-booth-frontend/index.html; \
+	sed -e "s|__API_BASE_URL__|$$API_URL|" -e "s|__REDIRECT_API_BASE_URL__|$$REDIRECT_API_URL|" \
+	  frontend/index.html > /tmp/photo-booth-frontend/index.html; \
 	cp frontend/app.js frontend/style.css frontend/qrcode.js /tmp/photo-booth-frontend/; \
-	echo "Serving gallery at http://localhost:8080 (API: $$API_URL)"; \
+	echo "Serving gallery at http://localhost:8080 (API: $$API_URL, Redirect API: $$REDIRECT_API_URL)"; \
 	cd /tmp/photo-booth-frontend && $(VENV_BIN)/python -m http.server 8080
 
 seed: venv

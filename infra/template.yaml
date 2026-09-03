@@ -98,6 +98,41 @@ Resources:
             Path: /photos
             Method: GET
 
+  RedirectPhotoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: kinetic-photo-booth-redirect-photo
+      Runtime: python3.12
+      Handler: src.lambdas.redirect_photo.handler.lambda_handler
+      CodeUri: ../
+      Timeout: 10
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref PhotosBucket
+      Environment:
+        Variables:
+          PHOTOS_BUCKET_NAME: !Ref PhotosBucket
+          PRESIGN_ENDPOINT_URL: !Ref PresignEndpointUrl
+      Events:
+        RedirectApi:
+          Type: Api
+          Properties:
+            # Own dedicated API, not GalleryApi - see RedirectApi's
+            # comment below for why.
+            RestApiId: !Ref RedirectApi
+            # Greedy path param - key contains slashes
+            # (events/{event}/{device}/{uuid}.jpg). Named "proxy" (not
+            # "key") because LocalStack's SAM/API Gateway transform only
+            # recognizes the canonical "{proxy+}" greedy variable name -
+            # a custom name like "{key+}" silently dropped the whole
+            # route from the deployed API.
+            # No auth on this route, matching the existing model: the
+            # presigned URL it redirects to was already reachable
+            # without login (security comes from the key being
+            # unguessable, not from auth).
+            Path: /p/{proxy+}
+            Method: GET
+
   GalleryApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -120,6 +155,25 @@ Resources:
           HttpMethod: "*"
           ThrottlingBurstLimit: 5
           ThrottlingRateLimit: 1
+
+  RedirectApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      # Separate from GalleryApi: LocalStack's SAM transform silently
+      # dropped a 3rd/greedy-path route when merged into the same
+      # explicit RestApiId as /auth and /photos (confirmed via manual
+      # apigateway calls - a hand-wired greedy route worked fine, so the
+      # bug is in LocalStack's swagger-merging, not API Gateway itself).
+      # Architecturally reasonable anyway: this route is unauthenticated
+      # by design (see RedirectPhotoFunction above), unlike GalleryApi's
+      # routes, so it isn't unreasonable for it to live on its own API.
+      # Real AWS wouldn't need this split, but there's no cost to
+      # keeping local and prod topology identical.
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type'"
+        AllowMethods: "'GET,OPTIONS'"
 
   PhotoUploaderUser:
     Type: AWS::IAM::User
@@ -194,6 +248,8 @@ Outputs:
       Name: kinetic-photo-booth-photos-bucket-name
   ApiBaseUrl:
     Value: !Sub "https://${GalleryApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  RedirectApiBaseUrl:
+    Value: !Sub "https://${RedirectApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
   GalleryUrl:
     Condition: ShouldDeployCloudFront
     Value: !Sub "https://${FrontendDistribution.DomainName}"

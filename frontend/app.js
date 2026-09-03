@@ -53,12 +53,16 @@ function buildPhotoTile(photo) {
   tile.appendChild(downloadLink);
 
   // Patron self-serve: scan with your own phone to get the photo
-  // directly - no operator involvement needed. Same presigned URL as
-  // the download link and <img> above, just QR-encoded.
+  // directly - no operator involvement needed. Encodes a short redirect
+  // link (/p/{key}) instead of the full presigned URL - the presigned
+  // URL's signature query string alone is 200+ characters, which makes
+  // for a dense, hard-to-scan QR code. The redirect endpoint also
+  // regenerates the presigned URL fresh at scan time, so it stays valid
+  // even if scanned well after this page loaded.
   const qrWrapper = document.createElement("div");
   qrWrapper.className = "qr-code";
   const qr = qrcode(0, "M");
-  qr.addData(photo.url);
+  qr.addData(`${window.REDIRECT_API_BASE_URL}/p/${photo.key}`);
   qr.make();
   qrWrapper.innerHTML = qr.createSvgTag(3, 8);
   tile.appendChild(qrWrapper);
